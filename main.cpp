@@ -10,8 +10,20 @@
 #include <arpa/inet.h>
 #include <sys/select.h>
 #include <iostream>
+#include <unistd.h>
 
 using namespace std;
+
+// Ping packet with a size of 64
+struct pingPkt 
+{ 
+    struct icmp icmp; 
+    char msg[64 - sizeof(icmp)]; 
+}; 
+
+
+unsigned short checksum(void *b, int len) {
+}
 
 void ping(struct sockaddr *dst) {
 
@@ -23,9 +35,10 @@ void ping(struct sockaddr *dst) {
     } 
 
     int ttlValue = 64;
-    int msg_count = 0;
+    int msgCount = 0;
     long rttMSec = 0;
     
+    struct pingPkt pkt;
     struct timespec time_start, time_end, tfs, tfe;
     struct timeval timeOut;
     timeOut.tv_sec = 1;
@@ -39,6 +52,23 @@ void ping(struct sockaddr *dst) {
 
     // Configure socket to timeout on receiving
     setsockopt(socketfd, SOL_SOCKET, SO_RCVTIMEO,(const char*) &timeOut, sizeof(timeOut));
+
+    // Continuously send icmp packets
+    while (1)
+    {
+        // empty packet
+        bzero(&pkt, sizeof(pkt));
+        pkt.icmp.icmp_type = ICMP_ECHO;
+        pkt.icmp.icmp_hun.ih_idseq.icd_id = getpid();
+        // Fill up the message in the packet
+        for (int i = 0; i < sizeof(pkt.msg) - 1; i++) {
+            pkt.msg[i] = i + '0';
+        }
+        pkt.icmp.icmp_hun.ih_idseq.icd_seq = msgCount++;
+        pkt.icmp.icmp_cksum = checksum(&pkt, sizeof(pkt));
+
+    }
+    
 
 }
 
