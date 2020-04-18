@@ -44,14 +44,15 @@ void ping(struct sockaddr *dst) {
 
     int socketfd;
     int socketOpt;
-    char* ipAddr;
     int ttlValue = 64;
     int msgCount = 0;
     long double rttMSec = 0;
     bool pktSent; 
+    char* ipAddr;
     struct pingPkt pkt;
     struct sockaddr recv;
     struct timespec time_start, time_end;
+
     struct timeval timeOut;
     timeOut.tv_sec = 1;
     timeOut.tv_usec = 0;
@@ -115,8 +116,8 @@ void ping(struct sockaddr *dst) {
             cout << "Receive packet function failed.\n";
         } else {
 
+            // Calculate RTT
             clock_gettime(CLOCK_MONOTONIC, &time_end);
-            // double timeElapsed = ((double)(time_end.tv_nsec = time_start.tv_nsec)) / 1000000.0;
             rttMSec = (double) (time_end.tv_nsec - time_start.tv_nsec) / 1000000;
 
             // Don't receive packet if not sent
