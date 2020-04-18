@@ -42,29 +42,40 @@ unsigned short checksum(void *b, int len)
 
 void ping(struct sockaddr *dst) {
 
-    // Get raw socket descriptor
-    int socketfd =  socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
-    if (socketfd == -1) {
-        cout << "Error when creating socket descriptor. \n";
-        return;
-    } 
-
+    int socketfd;
+    int socketOpt;
+    char* ipAddr;
     int ttlValue = 64;
     int msgCount = 0;
-    long rttMSec = 0;
+    long double rttMSec = 0;
     bool pktSent; 
     struct pingPkt pkt;
     struct sockaddr recv;
-    struct timespec time_start, time_end, tfs, tfe;
+    struct timespec time_start, time_end;
     struct timeval timeOut;
     timeOut.tv_sec = 1;
     timeOut.tv_usec = 0;
 
-    // Configuring socket to use TTL in the IP header
-    int socketOpt = setsockopt(socketfd, IPPROTO_IP, IP_TTL, &ttlValue, sizeof(ttlValue));
-    if (socketOpt == -1) {
-        cout << "Unable to configure socket. \n";
+    // Create raw socket and configuring it to use TTL in the IP header
+    if (dst->sa_family == AF_INET) {
+        ipAddr = (char*) malloc(INET_ADDRSTRLEN);
+        struct sockaddr_in * hostIP4 = (sockaddr_in *) dst;
+        inet_ntop(AF_INET, &(hostIP4->sin_addr), ipAddr, INET_ADDRSTRLEN);
+        // Configure socket to use TTL in IP header and to timeout on receiving
+        socketfd =  socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
+        socketOpt = setsockopt(socketfd, IPPROTO_IP, IP_TTL, &ttlValue, sizeof(ttlValue));
+    } else if (dst->sa_family == AF_INET6) {
+        ipAddr = (char*) malloc(INET6_ADDRSTRLEN);
+        struct sockaddr_in6* hostIP6 = (sockaddr_in6*) dst;
+        inet_ntop(AF_INET6, &(hostIP6->sin6_addr), ipAddr, INET6_ADDRSTRLEN);
+        socketfd =  socket(AF_INET6, SOCK_RAW, IPPROTO_ICMP);
+        socketOpt = setsockopt(socketfd, IPPROTO_IPV6, IP_TTL, &ttlValue, sizeof(ttlValue));
     }
+
+    if (socketfd == -1) {
+        cout << "Error when creating socket descriptor. \n";
+        return;
+    } 
 
     // Configure socket to timeout on receiving
     setsockopt(socketfd, SOL_SOCKET, SO_RCVTIMEO,(const char*) &timeOut, sizeof(timeOut));
@@ -105,28 +116,16 @@ void ping(struct sockaddr *dst) {
         } else {
 
             clock_gettime(CLOCK_MONOTONIC, &time_end);
-            rttMSec = (time_end.tv_sec - time_start.tv_sec) * 1000.0;
+            // double timeElapsed = ((double)(time_end.tv_nsec = time_start.tv_nsec)) / 1000000.0;
+            rttMSec = (double) (time_end.tv_nsec - time_start.tv_nsec) / 1000000;
 
             // Don't receive packet if not sent
             if (pktSent) {
                 if (pkt.icmp.icmp_code == 0) {
-                    char* hostname;
-                    if (dst->sa_family == AF_INET) {
-                        struct sockaddr_in * hostIP4 = (sockaddr_in *) dst;
-                        inet_ntop(AF_INET, &(hostIP4->sin_addr), hostname, INET_ADDRSTRLEN);
-                    } else if (dst->sa_family == AF_INET6) {
-                        struct sockaddr_in6* hostIP6 = (sockaddr_in6*) dst;
-                        inet_ntop(AF_INET6, &(hostIP6->sin6_addr), hostname, INET6_ADDRSTRLEN);
-                    }
 
-                    cout << "\n\n\nReceived packet! :) \n";
-                    cout << time_start.tv_sec << '\n';
-                    cout << time_end.tv_sec << '\n';
-                    cout << "Received packet sandwhich! :) \n\n\n";
-
-
-                    cout << "64 bytes from " << hostname << ": icmp_seq= " << msgCount << " ttl=" << ttlValue << 
-                        " time=" << rttMSec << " ms.\n";
+                    // Output packet stat
+                    cout << "64 bytes from " << ipAddr << ": icmp_seq= " << msgCount << " ttl=" << ttlValue << 
+                        " rtt=" << rttMSec << " ms.\n";
                 } else {
                     cout << "Error: Packet received with ICMP type: " << pkt.icmp.icmp_type << 
                         " and code: " << pkt.icmp.icmp_code << '\n';
