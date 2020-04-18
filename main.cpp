@@ -22,8 +22,23 @@ struct pingPkt
 }; 
 
 
-unsigned short checksum(void *b, int len) {
-}
+// Check Sum 
+unsigned short checksum(void *b, int len) 
+{    
+    unsigned short *buf = (unsigned short*) b; 
+    unsigned int sum=0; 
+    unsigned short result; 
+  
+    for ( sum = 0; len > 1; len -= 2 ) 
+        sum += *buf++; 
+    if ( len == 1 ) 
+        sum += *(unsigned char*)buf; 
+    sum = (sum >> 16) + (sum & 0xFFFF); 
+    sum += (sum >> 16); 
+    result = ~sum; 
+
+    return result; 
+} 
 
 void ping(struct sockaddr *dst) {
 
@@ -37,8 +52,9 @@ void ping(struct sockaddr *dst) {
     int ttlValue = 64;
     int msgCount = 0;
     long rttMSec = 0;
-    
+    bool pktSent; 
     struct pingPkt pkt;
+    struct sockaddr recv;
     struct timespec time_start, time_end, tfs, tfe;
     struct timeval timeOut;
     timeOut.tv_sec = 1;
@@ -60,6 +76,7 @@ void ping(struct sockaddr *dst) {
         bzero(&pkt, sizeof(pkt));
         pkt.icmp.icmp_type = ICMP_ECHO;
         pkt.icmp.icmp_hun.ih_idseq.icd_id = getpid();
+
         // Fill up the message in the packet
         for (int i = 0; i < sizeof(pkt.msg) - 1; i++) {
             pkt.msg[i] = i + '0';
@@ -67,6 +84,58 @@ void ping(struct sockaddr *dst) {
         pkt.icmp.icmp_hun.ih_idseq.icd_seq = msgCount++;
         pkt.icmp.icmp_cksum = checksum(&pkt, sizeof(pkt));
 
+        // Ping once every second
+        usleep(1000000);
+        
+        // Send packet
+        clock_gettime(CLOCK_MONOTONIC, &time_start);
+        if (sendto(socketfd, &pkt, sizeof(pkt), 0, dst, sizeof(*dst)) == -1) {
+            cout << "Packet failed to send.\n";
+            pktSent = false;
+        } 
+        else { 
+            pktSent = true;
+        }
+        
+        unsigned int recv_len = sizeof(recv);
+
+        // Receive packet
+        if (recvfrom(socketfd, &pkt, sizeof(pkt), 0, &recv, &recv_len) == -1) {
+            cout << "Receive packet function failed.\n";
+        } else {
+
+            clock_gettime(CLOCK_MONOTONIC, &time_end);
+            rttMSec = (time_end.tv_sec - time_start.tv_sec) * 1000.0;
+
+            // Don't receive packet if not sent
+            if (pktSent) {
+                if (pkt.icmp.icmp_code == 0) {
+                    char* hostname;
+                    if (dst->sa_family == AF_INET) {
+                        struct sockaddr_in * hostIP4 = (sockaddr_in *) dst;
+                        inet_ntop(AF_INET, &(hostIP4->sin_addr), hostname, INET_ADDRSTRLEN);
+                    } else if (dst->sa_family == AF_INET6) {
+                        struct sockaddr_in6* hostIP6 = (sockaddr_in6*) dst;
+                        inet_ntop(AF_INET6, &(hostIP6->sin6_addr), hostname, INET6_ADDRSTRLEN);
+                    }
+
+                    cout << "\n\n\nReceived packet! :) \n";
+                    cout << time_start.tv_sec << '\n';
+                    cout << time_end.tv_sec << '\n';
+                    cout << "Received packet sandwhich! :) \n\n\n";
+
+
+                    cout << "64 bytes from " << hostname << ": icmp_seq= " << msgCount << " ttl=" << ttlValue << 
+                        " time=" << rttMSec << " ms.\n";
+                } else {
+                    cout << "Error: Packet received with ICMP type: " << pkt.icmp.icmp_type << 
+                        " and code: " << pkt.icmp.icmp_code << '\n';
+                }
+            }
+
+
+        }
+        
     }
     
 
